@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"github.com/panjf2000/gnet/v2"
-	"github.com/panjf2000/gnet/v2/pkg/pool/goroutine"
-	"go.uber.org/zap"
 	"server_millionclient/public"
 	"server_millionclient/public/protocol"
 	"time"
+
+	"github.com/panjf2000/gnet/v2"
+	"github.com/panjf2000/gnet/v2/pkg/pool/goroutine"
+	"go.uber.org/zap"
 )
 
 var (

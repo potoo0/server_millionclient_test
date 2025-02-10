@@ -1,6 +1,7 @@
 package public
 
 import (
+	"crypto/tls"
 	"net"
 	"reflect"
 	"sync"
@@ -60,7 +61,7 @@ func (e *Epoll) Remove(conn net.Conn) error {
 
 func (e *Epoll) Wait() ([]net.Conn, error) {
 	events := make([]unix.EpollEvent, 100)
-	n, err := unix.EpollWait(e.fd, events, 100)
+	n, err := unix.EpollWait(e.fd, events, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +78,13 @@ func (e *Epoll) Wait() ([]net.Conn, error) {
 func netFD(conn net.Conn) int {
 	//connVal := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn").Elem()
 	//tcpConn := reflect.Indirect(connVal).FieldByName("conn")'
-	tcpConn := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn")
+	var tcpConn reflect.Value
+	if _, ok := conn.(*tls.Conn); ok {
+		connVal := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn").Elem()
+		tcpConn = reflect.Indirect(connVal).FieldByName("conn")
+	} else {
+		tcpConn = reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn")
+	}
 	fdVal := tcpConn.FieldByName("fd")
 	pfdVal := reflect.Indirect(fdVal).FieldByName("pfd")
 	return int(pfdVal.FieldByName("Sysfd").Int())
