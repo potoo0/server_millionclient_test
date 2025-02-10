@@ -1,15 +1,16 @@
 #!/bin/bash
 ## This script helps regenerating multiple client instances in different network namespaces using Docker
 ## This helps to overcome the ephemeral source port limitation
-## Usage:   ./client.sh <number of clients> <server addr> <connections> <number of goroutines>
-## Example: ./client.sh 10 1m-server:8000 50000 1000
-## Example: ./client.sh 10 10.89.3.10:8000 50000 1000
+## Usage:   ./client.sh <number of clients> <server addr> <connections> <number of goroutines> <enable tls>
+## Example: ./client.sh 10 1m-server:8000 30000 1000 false
+## Example: ./client.sh 10 10.89.3.10:8000 30000 1000 false
 ## Number of clients helps to speed up connections establishment at large scale, in order to make the demo faster
 
 REPLICAS=$1
 ADDR=$2
 CONNECTIONS=$3
 GOROUTINES=$4
+TLS=${5:-false}
 
 go build --tags "static netgo" -o build/client client.go
 
@@ -23,5 +24,5 @@ for (( c=0; c<REPLICAS; c++ )); do
         -v "$(pwd)/build/client:/client" \
         --name 1m-client-$c \
         -d alpine \
-        /client -addr="$ADDR" -conn="$CONNECTIONS" -timeout=10m -goroutines="$GOROUTINES"
+        /client -addr="$ADDR" -conn="$CONNECTIONS" -timeout=10m -goroutines="$GOROUTINES" -tls="$TLS"
 done

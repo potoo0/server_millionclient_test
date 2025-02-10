@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"server_millionclient/public"
 	"server_millionclient/public/protocol"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,27 +23,44 @@ var (
 	verbose = flag.Bool("verbose", false, "verbose")
 )
 
-var epoller *public.Epoll
-
 func main() {
 	flag.Parse()
 	public.InitLogger(*verbose)
 	public.SetLimit()
 
-	public.Logger.Info("listening", zap.String("addr", *addr))
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		public.Logger.Fatal("listen error", zap.Error(err))
+	listenerNum := runtime.NumCPU()
+	public.Logger.Info("listening", zap.String("addr", *addr), zap.Int("listenerNum", listenerNum))
+
+	ctx, cancel := context.WithCancelCause(context.TODO())
+	var errOnce sync.Once
+	for range listenerNum {
+		go func() {
+			if err := listen(ctx); err != nil {
+				errOnce.Do(func() { cancel(err) })
+			}
+		}()
+	}
+	if err := context.Cause(ctx); err != nil {
+		public.Logger.Error("listen failed", zap.Error(err))
 	}
 
 	go public.ServeMetrics()
 
-	// Start epoll
-	epoller, err = public.MkEpoll()
+	<-ctx.Done()
+}
+
+func listen(ctx context.Context) error {
+	ln, err := public.ListenConfig.Listen(ctx, "tcp", *addr)
 	if err != nil {
-		public.Logger.Fatal("mk epoll failed", zap.Error(err))
+		return fmt.Errorf("listen failed: %w", err)
 	}
-	go Start()
+
+	// Start epoll
+	epoller, err := public.MkEpoll()
+	if err != nil {
+		return fmt.Errorf("mk epoll failed: %w", err)
+	}
+	go Start(epoller)
 
 	for {
 		conn, err := ln.Accept()
@@ -49,7 +68,7 @@ func main() {
 			public.Logger.Error("tcp accept failed", zap.Error(err))
 
 			if errors.Is(err.(*net.OpError).Err, net.ErrClosed) {
-				return
+				return err
 			}
 			continue
 		}
@@ -63,7 +82,7 @@ func main() {
 	}
 }
 
-func Start() {
+func Start(epoller *public.Epoll) {
 	for {
 		connections, err := epoller.Wait()
 		// 忽略 EINTR(interrupted system call)
